@@ -84,6 +84,25 @@ importers:
         specifier: ^4.19.0
         version: 4.21.0
 
+  examples/sprint15-showcase:
+    dependencies:
+      '@termuijs/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@termuijs/motion':
+        specifier: workspace:*
+        version: link:../../packages/motion
+      '@termuijs/tss':
+        specifier: workspace:*
+        version: link:../../packages/tss
+      '@termuijs/widgets':
+        specifier: workspace:*
+        version: link:../../packages/widgets
+    devDependencies:
+      tsx:
+        specifier: ^4.7.0
+        version: 4.21.0
+
   examples/system-monitor:
     dependencies:
       '@termuijs/data':
