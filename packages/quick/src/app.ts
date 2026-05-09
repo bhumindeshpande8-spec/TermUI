@@ -385,8 +385,13 @@ export class AppBuilder {
         let refreshTimer: ReturnType<typeof setInterval> | null = null;
         if (this._refreshInterval) {
             refreshTimer = setInterval(() => {
-                this._refreshReactiveWidgets(root);
-                appInstance.requestRender();
+                try {
+                    this._refreshReactiveWidgets(root);
+                    appInstance.requestRender();
+                } catch (err) {
+                    // Reactive widget error — don't crash the process
+                    console.error('[quick] reactive widget error:', err);
+                }
             }, this._refreshInterval);
         }
 
@@ -407,63 +412,68 @@ export class AppBuilder {
      * Walk the widget tree and update any reactive values.
      */
     private _refreshReactiveWidgets(widget: Widget): void {
-        const w = widget as any;
+        try {
+            const w = widget as any;
 
-        // Text — reactive content
-        if (widget instanceof Text && w.__reactiveContent) {
-            widget.setContent(resolve(w.__reactiveContent));
-        }
+            // Text — reactive content
+            if (widget instanceof Text && w.__reactiveContent) {
+                widget.setContent(resolve(w.__reactiveContent));
+            }
 
-        // Gauge — reactive value
-        if (widget instanceof Gauge && w.__reactiveValue) {
-            widget.setValue(resolve(w.__reactiveValue));
-        }
+            // Gauge — reactive value
+            if (widget instanceof Gauge && w.__reactiveValue) {
+                widget.setValue(resolve(w.__reactiveValue));
+            }
 
-        // Table — reactive data
-        if (widget instanceof Table && w.__reactiveData) {
-            const data: Record<string, string | number>[] = resolve(w.__reactiveData);
-            widget.setRows(data);
-        }
+            // Table — reactive data
+            if (widget instanceof Table && w.__reactiveData) {
+                const data: Record<string, string | number>[] = resolve(w.__reactiveData);
+                widget.setRows(data);
+            }
 
-        // Sparkline — reactive data
-        if (widget instanceof Sparkline && w.__reactiveData) {
-            widget.setData(resolve(w.__reactiveData));
-        }
+            // Sparkline — reactive data
+            if (widget instanceof Sparkline && w.__reactiveData) {
+                widget.setData(resolve(w.__reactiveData));
+            }
 
-        // StatusIndicator — reactive status
-        if (widget instanceof StatusIndicator && w.__reactiveStatus) {
-            widget.setStatus(resolve(w.__reactiveStatus));
-        }
+            // StatusIndicator — reactive status
+            if (widget instanceof StatusIndicator && w.__reactiveStatus) {
+                widget.setStatus(resolve(w.__reactiveStatus));
+            }
 
-        // LogView — reactive lines
-        if (widget instanceof LogView && w.__reactiveLines) {
-            widget.setLines(resolve(w.__reactiveLines));
-        }
+            // LogView — reactive lines
+            if (widget instanceof LogView && w.__reactiveLines) {
+                widget.setLines(resolve(w.__reactiveLines));
+            }
 
-        // List — reactive items
-        if (widget instanceof List && w.__reactiveItems) {
-            const items: string[] = resolve(w.__reactiveItems);
-            widget.setItems(items.map(label => ({ label, value: label })));
-        }
+            // List — reactive items
+            if (widget instanceof List && w.__reactiveItems) {
+                const items: string[] = resolve(w.__reactiveItems);
+                widget.setItems(items.map(label => ({ label, value: label })));
+            }
 
-        // BarChart — reactive data
-        if (widget instanceof BarChart && w.__reactiveBarData) {
-            widget.setData(resolve(w.__reactiveBarData));
-        }
+            // BarChart — reactive data
+            if (widget instanceof BarChart && w.__reactiveBarData) {
+                widget.setData(resolve(w.__reactiveBarData));
+            }
 
-        // ProgressBar — reactive value
-        if (widget instanceof ProgressBar && w.__reactiveValue) {
-            widget.setValue(resolve(w.__reactiveValue));
-        }
+            // ProgressBar — reactive value
+            if (widget instanceof ProgressBar && w.__reactiveValue) {
+                widget.setValue(resolve(w.__reactiveValue));
+            }
 
-        // Tree — reactive nodes (if data changes)
-        if (widget instanceof Tree && w.__reactiveTreeNodes) {
-            widget.setNodes(resolve(w.__reactiveTreeNodes));
-        }
+            // Tree — reactive nodes (if data changes)
+            if (widget instanceof Tree && w.__reactiveTreeNodes) {
+                widget.setNodes(resolve(w.__reactiveTreeNodes));
+            }
 
-        // Recurse into children
-        for (const child of widget.children) {
-            this._refreshReactiveWidgets(child);
+            // Recurse into children
+            for (const child of widget.children) {
+                this._refreshReactiveWidgets(child);
+            }
+        } catch (err) {
+            // Reactive widget error — don't crash the process
+            console.error('[quick] reactive widget error:', err);
         }
     }
 }

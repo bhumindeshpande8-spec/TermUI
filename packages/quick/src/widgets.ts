@@ -234,7 +234,7 @@ export function tree(data: TreeNode[], opts: QuickTreeOptions = {}): Widget {
         borderColor: { type: 'named', name: 'brightBlack' },
         padding: 1,
     });
-    (t as any).__reactiveTreeData = null; // static by default
+    (t as any).__reactiveTreeNodes = null; // static by default
     return t;
 }
 
