@@ -9,8 +9,14 @@
 import type { KeyEvent } from '@termuijs/core';
 import { caps } from '@termuijs/core';
 import { timerPoolSubscribe } from '@termuijs/motion';
+import type { FC } from './vnode.js';
 
 // ── Fiber — per-component-instance state ──
+
+export interface ChildFiberEntry {
+    fiber: Fiber;
+    component: FC<any>;
+}
 
 export interface Fiber {
     id: number;
@@ -30,6 +36,13 @@ export interface Fiber {
     isErrorBoundary?: true;
     /** Called with the caught error; returns the fallback VNode to render */
     errorFallback?: (err: Error) => import('./vnode.js').VNode;
+    // ── Child fiber identity (for fiber reuse across re-renders) ──
+    /** Child fibers from current render, keyed by "${index}:${componentName}" */
+    childFibers?: Map<string, ChildFiberEntry>;
+    /** Child fibers from previous render — used for lookup then cleaned up */
+    _prevChildFibers?: Map<string, ChildFiberEntry>;
+    /** Next child render index, reset by setCurrentFiber each render pass */
+    _nextChildIdx?: number;
 }
 
 interface HookState {
@@ -64,8 +77,12 @@ export function currentFiber(): Fiber {
 /** Set the current render context */
 export function setCurrentFiber(fiber: Fiber): void {
     _currentFiber = fiber;
-    fiber.hookIndex = 0; // Reset for each render pass
-    fiber.onInput = undefined; // Reset so dev-mode conflict detection works correctly
+    fiber.hookIndex = 0;
+    fiber.onInput = undefined;
+    fiber._nextChildIdx = 0;
+    // Snapshot existing child fibers so renderComponent can look them up for reuse
+    fiber._prevChildFibers = fiber.childFibers;
+    fiber.childFibers = new Map();
 }
 
 /** Clear the current render context */
@@ -408,24 +425,51 @@ export function runEffects(fiber: Fiber): void {
     }
 }
 
-/** Clean up all effects and intervals for a fiber */
+/** Clean up all effects and intervals for a fiber, including child fibers */
 export function destroyFiber(fiber: Fiber): void {
-    // Run effect cleanups
     for (const record of fiber.effects) {
         record.cleanup?.();
     }
     for (const cleanup of fiber.cleanups) {
         cleanup();
     }
-    // Clear intervals
     for (const timer of fiber.intervals) {
         clearInterval(timer);
+    }
+    // Recursively destroy child fibers
+    if (fiber.childFibers) {
+        for (const entry of fiber.childFibers.values()) {
+            destroyFiber(entry.fiber);
+        }
+    }
+    if (fiber._prevChildFibers) {
+        for (const entry of fiber._prevChildFibers.values()) {
+            destroyFiber(entry.fiber);
+        }
     }
     fiber.hooks = [];
     fiber.effects = [];
     fiber.cleanups = [];
     fiber.intervals = [];
     fiber.contextValues.clear();
+    fiber.childFibers = undefined;
+    fiber._prevChildFibers = undefined;
+}
+
+/**
+ * Traverse the fiber tree collecting all onInput handlers.
+ * Used by render() to dispatch key events to all active keymaps.
+ */
+export function collectInputHandlers(fiber: Fiber): Array<(event: KeyEvent) => void> {
+    const handlers: Array<(event: KeyEvent) => void> = [];
+    if (fiber.onInput) handlers.push(fiber.onInput);
+    if (fiber.childFibers) {
+        for (const entry of fiber.childFibers.values()) {
+            const nested = collectInputHandlers(entry.fiber);
+            for (const h of nested) handlers.push(h);
+        }
+    }
+    return handlers;
 }
 
 // ── Async Data Hook ──

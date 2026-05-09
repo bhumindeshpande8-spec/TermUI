@@ -232,16 +232,58 @@ function defaultErrorVNode(err: Error): VNode {
     } as any;
 }
 
+/** Destroy child fibers in _prevChildFibers that were not re-visited this render */
+function cleanupStaleChildFibers(fiber: Fiber): void {
+    if (!fiber._prevChildFibers) return;
+    for (const [key, entry] of fiber._prevChildFibers) {
+        if (!fiber.childFibers?.has(key)) {
+            destroyFiber(entry.fiber);
+        }
+    }
+    fiber._prevChildFibers = undefined;
+}
+
 /**
  * Render a functional component — set up fiber, call the function, reconcile output.
- * Component render errors are caught and routed to the nearest ErrorBoundary.
+ * Fibers are reused across renders by identity key (position + component name) so
+ * useState/useEffect state survives re-renders. Component errors are routed to the
+ * nearest ErrorBoundary.
  */
 function renderComponent(
     component: FC<any>,
     props: Record<string, any>,
     children: VNode[],
 ): Widget {
-    const fiber = createFiber(_parentFiber);
+    const parentFiber = _parentFiber;
+
+    // ── Fiber identity / reuse ──────────────────────────
+    // Look up an existing child fiber from the previous render.
+    // This preserves useState/useEffect state across reconcile passes.
+    const childIdx = parentFiber ? (parentFiber._nextChildIdx ?? 0) : 0;
+    if (parentFiber) parentFiber._nextChildIdx = childIdx + 1;
+
+    const componentName = (component as any).displayName ?? (component as any).name ?? 'anon';
+    const identityKey = `${childIdx}:${componentName}`;
+
+    let fiber: Fiber;
+    if (parentFiber?._prevChildFibers) {
+        const existing = parentFiber._prevChildFibers.get(identityKey);
+        if (existing && existing.component === component) {
+            fiber = existing.fiber;
+            // Transfer to current render's childFibers
+            parentFiber.childFibers!.set(identityKey, { fiber, component });
+        } else {
+            // Different component at this position — destroy old, create new
+            if (existing) destroyFiber(existing.fiber);
+            fiber = createFiber(parentFiber);
+            parentFiber.childFibers!.set(identityKey, { fiber, component });
+        }
+    } else {
+        fiber = createFiber(parentFiber);
+        if (parentFiber?.childFibers) {
+            parentFiber.childFibers.set(identityKey, { fiber, component });
+        }
+    }
 
     // Mark ErrorBoundary fibers so the error handler can find them
     if (component === ErrorBoundary) {
@@ -286,6 +328,9 @@ function renderComponent(
 
     // Restore parent fiber
     _parentFiber = prevParent;
+
+    // Destroy any child fibers not visited during this render (component unmounted)
+    cleanupStaleChildFibers(fiber);
 
     // Run effects after render
     runEffects(fiber);
@@ -356,12 +401,14 @@ export function reRenderComponent(instance: ComponentInstance): Widget {
         return instance.widget;
     }
 
-    // For simplicity in v1, rebuild the widget tree
-    // TODO: Smart diffing in a future version
+    // Rebuild the widget tree (fiber state is preserved via childFibers reuse)
     const newWidget = reconcile(vnode);
 
     // Restore parent fiber
     _parentFiber = prevParent;
+
+    // Destroy child fibers not visited during this render
+    cleanupStaleChildFibers(fiber);
 
     runEffects(fiber);
     fiber.isDirty = false;

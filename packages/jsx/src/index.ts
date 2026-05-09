@@ -44,7 +44,7 @@ export type { RenderOptions } from './render.js';
 export { reconcile, unmountAll } from './reconciler.js';
 
 // ── Internal — used by @termuijs/testing ──
-export { setRequestRender } from './hooks.js';
+export { setRequestRender, collectInputHandlers } from './hooks.js';
 
 // ── Convenience alias ──
 /** h() — shorthand for createElement */

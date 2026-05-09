@@ -10,7 +10,7 @@ import { App, type KeyEvent } from '@termuijs/core';
 import { Box, Widget } from '@termuijs/widgets';
 import type { VNode, FC } from './vnode.js';
 import { reconcile, unmountAll, reRenderComponent } from './reconciler.js';
-import { setRequestRender } from './hooks.js';
+import { setRequestRender, collectInputHandlers } from './hooks.js';
 import { createElement } from './createElement.js';
 
 export interface RenderOptions {
@@ -99,13 +99,15 @@ export async function render(
             return;
         }
 
-        // Dispatch to every component fiber that has a useInput handler
+        // Dispatch key events via fiber tree traversal.
+        // instanceMap dispatch is unreliable for pass-through components (ancestors
+        // overwrite descendants' instanceMap entries). Traversing the root fiber's
+        // childFibers tree finds every onInput handler regardless of nesting.
         const instances: Map<Widget, any> = (globalThis as any).__termuijs_instances;
-        if (instances) {
-            for (const inst of instances.values()) {
-                if (inst?.fiber?.onInput) {
-                    inst.fiber.onInput(event);
-                }
+        const rootInstance = instances?.get(rootWidget);
+        if (rootInstance?.fiber) {
+            for (const handler of collectInputHandlers(rootInstance.fiber)) {
+                handler(event);
             }
         }
     });
